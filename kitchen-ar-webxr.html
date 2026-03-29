@@ -1,0 +1,1026 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>KitchenAR — Quest 3</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Mono:wght@300;400;500&display=swap');
+
+  * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+
+  :root {
+    --bg: #080b0f;
+    --surface: #111518;
+    --border: rgba(255,255,255,0.08);
+    --accent: #00e5ff;
+    --accent2: #7c3aed;
+    --text: #e8eaf0;
+    --muted: #556070;
+    --success: #22c55e;
+    --warn: #f59e0b;
+  }
+
+  html, body {
+    width: 100%; height: 100%;
+    overflow: hidden;
+    background: var(--bg);
+    font-family: 'Syne', sans-serif;
+    color: var(--text);
+  }
+
+  /* ── LOADING SCREEN ── */
+  #loadScreen {
+    position: fixed; inset: 0;
+    background: var(--bg);
+    display: flex; flex-direction: column;
+    align-items: center; justify-content: center;
+    gap: 20px; z-index: 200;
+    transition: opacity 0.5s;
+  }
+
+  #loadScreen.fade { opacity: 0; pointer-events: none; }
+
+  .load-logo {
+    font-size: 2rem; font-weight: 800; letter-spacing: -1px;
+  }
+  .load-logo span { color: var(--accent); }
+
+  .load-bar-track {
+    width: 200px; height: 2px;
+    background: rgba(255,255,255,0.08);
+    border-radius: 2px; overflow: hidden;
+  }
+  .load-bar-fill {
+    height: 100%;
+    background: var(--accent);
+    border-radius: 2px;
+    animation: loadfill 1.2s ease forwards;
+  }
+  @keyframes loadfill { from { width: 0; } to { width: 100%; } }
+
+  .load-sub {
+    font-family: 'DM Mono', monospace;
+    font-size: 0.7rem;
+    color: var(--muted);
+    letter-spacing: 2px;
+  }
+
+  /* ── CANVAS ── */
+  #c {
+    position: fixed; inset: 0;
+    width: 100% !important;
+    height: 100% !important;
+    display: block;
+    touch-action: none;
+  }
+
+  /* ── UI OVERLAY ── */
+  #ui {
+    position: fixed; inset: 0;
+    pointer-events: none;
+    z-index: 10;
+    display: flex; flex-direction: column;
+    justify-content: space-between;
+  }
+
+  /* ── TOP BAR ── */
+  .top-bar {
+    pointer-events: all;
+    display: flex; align-items: center;
+    justify-content: space-between;
+    padding: 16px 20px;
+    background: linear-gradient(180deg, rgba(8,11,15,0.92) 0%, transparent 100%);
+    backdrop-filter: blur(8px);
+  }
+
+  .logo-small {
+    font-size: 1rem; font-weight: 800; letter-spacing: -0.5px;
+  }
+  .logo-small span { color: var(--accent); }
+
+  .status-pill {
+    display: flex; align-items: center; gap: 7px;
+    background: rgba(0,0,0,0.5);
+    border: 1px solid var(--border);
+    padding: 5px 12px;
+    border-radius: 20px;
+    font-family: 'DM Mono', monospace;
+    font-size: 0.65rem;
+    color: var(--muted);
+  }
+
+  .status-dot {
+    width: 6px; height: 6px; border-radius: 50%;
+    background: var(--muted);
+  }
+  .status-dot.live { background: var(--success); box-shadow: 0 0 8px var(--success); animation: pulse 1.5s infinite; }
+  .status-dot.scanning { background: var(--warn); box-shadow: 0 0 8px var(--warn); animation: pulse 0.7s infinite; }
+
+  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.3} }
+
+  /* ── INSTRUCTIONS ── */
+  #instructions {
+    position: absolute;
+    top: 50%; left: 50%;
+    transform: translate(-50%, -50%);
+    text-align: center;
+    pointer-events: none;
+    transition: opacity 0.4s;
+  }
+
+  .inst-icon { font-size: 2.5rem; margin-bottom: 10px; }
+
+  .inst-title {
+    font-size: 1.1rem; font-weight: 700;
+    margin-bottom: 6px;
+  }
+
+  .inst-sub {
+    font-family: 'DM Mono', monospace;
+    font-size: 0.72rem;
+    color: var(--muted);
+    line-height: 1.6;
+  }
+
+  /* ── RETICLE LABEL ── */
+  #reticleLabel {
+    position: absolute;
+    top: 50%; left: 50%;
+    transform: translate(-50%, calc(-50% - 60px));
+    font-family: 'DM Mono', monospace;
+    font-size: 0.65rem;
+    color: var(--accent);
+    background: rgba(0,0,0,0.6);
+    padding: 3px 9px;
+    border-radius: 4px;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.3s;
+    letter-spacing: 1px;
+  }
+
+  /* ── KITCHEN PICKER ── */
+  #picker {
+    pointer-events: all;
+    padding: 0 16px 24px;
+    background: linear-gradient(0deg, rgba(8,11,15,0.96) 0%, transparent 100%);
+  }
+
+  .picker-label {
+    font-family: 'DM Mono', monospace;
+    font-size: 0.6rem;
+    color: var(--accent);
+    letter-spacing: 2px;
+    margin-bottom: 10px;
+    padding-left: 2px;
+  }
+
+  .picker-scroll {
+    display: flex;
+    gap: 10px;
+    overflow-x: auto;
+    padding-bottom: 4px;
+    scrollbar-width: none;
+  }
+  .picker-scroll::-webkit-scrollbar { display: none; }
+
+  .k-card {
+    flex-shrink: 0;
+    width: 100px;
+    border-radius: 10px;
+    overflow: hidden;
+    border: 1.5px solid var(--border);
+    cursor: pointer;
+    transition: all 0.2s;
+    background: var(--surface);
+  }
+
+  .k-card:hover, .k-card:active { border-color: var(--accent); transform: translateY(-2px); }
+  .k-card.active { border-color: var(--accent); box-shadow: 0 0 16px rgba(0,229,255,0.25); }
+
+  .k-card img {
+    width: 100%; height: 70px;
+    object-fit: cover; display: block;
+  }
+
+  .k-card-name {
+    padding: 5px 7px;
+    font-size: 0.65rem;
+    font-weight: 700;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  /* Import card */
+  .k-import {
+    flex-shrink: 0;
+    width: 100px; height: 100px;
+    border-radius: 10px;
+    border: 1.5px dashed rgba(0,229,255,0.3);
+    display: flex; flex-direction: column;
+    align-items: center; justify-content: center;
+    gap: 4px;
+    cursor: pointer;
+    transition: all 0.2s;
+    color: var(--muted);
+    font-size: 0.6rem;
+    font-family: 'DM Mono', monospace;
+    position: relative;
+    overflow: hidden;
+  }
+
+  .k-import:hover { border-color: var(--accent); color: var(--accent); }
+  .k-import input { position: absolute; inset: 0; opacity: 0; cursor: pointer; }
+  .k-import-icon { font-size: 1.5rem; }
+
+  /* ── CONTROLS BAR ── */
+  #controls {
+    pointer-events: all;
+    display: flex; gap: 8px;
+    padding: 0 16px 10px;
+    justify-content: center;
+    flex-wrap: wrap;
+  }
+
+  .ctrl-btn {
+    padding: 9px 18px;
+    border-radius: 24px;
+    border: 1px solid var(--border);
+    background: rgba(8,11,15,0.85);
+    color: var(--text);
+    font-family: 'Syne', sans-serif;
+    font-size: 0.75rem;
+    font-weight: 700;
+    cursor: pointer;
+    backdrop-filter: blur(10px);
+    transition: all 0.2s;
+    letter-spacing: 0.2px;
+  }
+
+  .ctrl-btn:hover, .ctrl-btn:active { border-color: var(--accent); color: var(--accent); }
+
+  .ctrl-btn.primary {
+    background: var(--accent);
+    color: #000;
+    border-color: var(--accent);
+  }
+  .ctrl-btn.primary:hover { background: #00c8e0; }
+  .ctrl-btn.primary:disabled { opacity: 0.4; cursor: not-allowed; }
+
+  .ctrl-btn.danger { border-color: rgba(239,68,68,0.4); color: #ef4444; }
+  .ctrl-btn.danger:hover { background: rgba(239,68,68,0.1); }
+
+  /* ── TRANSFORM CONTROLS ── */
+  #transformControls {
+    pointer-events: all;
+    display: none;
+    flex-direction: column;
+    gap: 8px;
+    padding: 12px 20px;
+    background: rgba(8,11,15,0.85);
+    backdrop-filter: blur(12px);
+    border-top: 1px solid var(--border);
+  }
+
+  #transformControls.visible { display: flex; }
+
+  .slider-row {
+    display: flex; align-items: center; gap: 12px;
+  }
+
+  .slider-label {
+    font-family: 'DM Mono', monospace;
+    font-size: 0.62rem;
+    color: var(--muted);
+    width: 56px;
+    letter-spacing: 0.5px;
+  }
+
+  .slider-input {
+    flex: 1;
+    -webkit-appearance: none;
+    height: 3px;
+    background: var(--surface);
+    border-radius: 2px;
+    outline: none;
+    cursor: pointer;
+  }
+
+  .slider-input::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    width: 16px; height: 16px;
+    border-radius: 50%;
+    background: var(--accent);
+    box-shadow: 0 0 8px rgba(0,229,255,0.4);
+    cursor: pointer;
+  }
+
+  .slider-val {
+    font-family: 'DM Mono', monospace;
+    font-size: 0.65rem;
+    color: var(--accent);
+    width: 38px;
+    text-align: right;
+  }
+
+  /* ── AR ENTER BUTTON ── */
+  #arBtn {
+    position: fixed;
+    bottom: 200px;
+    left: 50%; transform: translateX(-50%);
+    padding: 16px 40px;
+    background: var(--accent);
+    color: #000;
+    border: none;
+    border-radius: 40px;
+    font-family: 'Syne', sans-serif;
+    font-size: 1rem;
+    font-weight: 800;
+    cursor: pointer;
+    z-index: 50;
+    box-shadow: 0 0 40px rgba(0,229,255,0.4);
+    transition: all 0.2s;
+    letter-spacing: 0.3px;
+  }
+
+  #arBtn:hover { transform: translateX(-50%) scale(1.04); }
+  #arBtn.hidden { display: none; }
+
+  /* ── NOT SUPPORTED ── */
+  #noXR {
+    position: fixed; inset: 0;
+    display: none;
+    align-items: center; justify-content: center;
+    flex-direction: column;
+    gap: 16px;
+    text-align: center;
+    padding: 30px;
+    background: var(--bg);
+    z-index: 100;
+  }
+
+  #noXR.show { display: flex; }
+
+  .noxr-icon { font-size: 3rem; }
+  .noxr-title { font-size: 1.3rem; font-weight: 700; }
+  .noxr-sub { font-size: 0.82rem; color: var(--muted); line-height: 1.7; max-width: 400px; }
+  .noxr-url {
+    font-family: 'DM Mono', monospace;
+    font-size: 0.75rem;
+    color: var(--accent);
+    background: rgba(0,229,255,0.08);
+    border: 1px solid rgba(0,229,255,0.2);
+    padding: 10px 18px;
+    border-radius: 8px;
+    word-break: break-all;
+  }
+
+  /* ── TOAST ── */
+  #toast {
+    position: fixed;
+    top: 80px; left: 50%;
+    transform: translateX(-50%) translateY(-20px);
+    background: var(--surface);
+    border: 1px solid rgba(0,229,255,0.3);
+    color: var(--text);
+    padding: 9px 20px;
+    border-radius: 8px;
+    font-size: 0.78rem; font-weight: 600;
+    z-index: 300;
+    opacity: 0;
+    transition: all 0.3s;
+    pointer-events: none;
+    white-space: nowrap;
+    box-shadow: 0 8px 30px rgba(0,0,0,0.4);
+  }
+
+  #toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+
+  /* ── DESKTOP FALLBACK CANVAS ── */
+  #desktopCanvas {
+    position: fixed; inset: 0;
+    display: none;
+  }
+
+  #desktopCanvas.show { display: block; }
+
+  /* ── CROSSHAIR (desktop preview) ── */
+  .crosshair {
+    position: fixed;
+    top: 50%; left: 50%;
+    transform: translate(-50%, -50%);
+    width: 20px; height: 20px;
+    pointer-events: none;
+    z-index: 5;
+  }
+  .crosshair::before, .crosshair::after {
+    content: '';
+    position: absolute;
+    background: rgba(0,229,255,0.6);
+  }
+  .crosshair::before { width: 1px; height: 100%; left: 50%; top: 0; }
+  .crosshair::after  { width: 100%; height: 1px; top: 50%; left: 0; }
+</style>
+</head>
+<body>
+
+<!-- LOAD SCREEN -->
+<div id="loadScreen">
+  <div class="load-logo">Kitchen<span>AR</span></div>
+  <div class="load-bar-track"><div class="load-bar-fill"></div></div>
+  <div class="load-sub">INITIALISING WEBXR ENGINE</div>
+</div>
+
+<!-- THREE.JS CANVAS -->
+<canvas id="c"></canvas>
+
+<!-- DESKTOP PREVIEW CANVAS (fallback) -->
+<canvas id="desktopCanvas"></canvas>
+
+<!-- CROSSHAIR -->
+<div class="crosshair" id="crosshair" style="display:none;"></div>
+
+<!-- UI OVERLAY -->
+<div id="ui" style="display:none;">
+
+  <!-- TOP BAR -->
+  <div class="top-bar">
+    <div class="logo-small">Kitchen<span>AR</span></div>
+    <div class="status-pill">
+      <div class="status-dot live" id="statusDot"></div>
+      <span id="statusText">AR LIVE</span>
+    </div>
+  </div>
+
+  <!-- CENTRE INSTRUCTIONS -->
+  <div id="instructions">
+    <div class="inst-icon">👆</div>
+    <div class="inst-title">Tap a surface to place kitchen</div>
+    <div class="inst-sub">Move your Quest 3 slowly to detect surfaces<br>A reticle will appear when a plane is found</div>
+  </div>
+
+  <div id="reticleLabel">TAP TO PLACE</div>
+
+  <!-- TRANSFORM SLIDERS (shown after placement) -->
+  <div id="transformControls">
+    <div class="slider-row">
+      <span class="slider-label">WIDTH</span>
+      <input type="range" class="slider-input" id="sWidth" min="0.5" max="6" step="0.05" value="2.5" oninput="updateTransform()">
+      <span class="slider-val" id="vWidth">2.5m</span>
+    </div>
+    <div class="slider-row">
+      <span class="slider-label">HEIGHT</span>
+      <input type="range" class="slider-input" id="sHeight" min="0.5" max="3" step="0.05" value="1.5" oninput="updateTransform()">
+      <span class="slider-val" id="vHeight">1.5m</span>
+    </div>
+    <div class="slider-row">
+      <span class="slider-label">ROTATE</span>
+      <input type="range" class="slider-input" id="sRotate" min="-180" max="180" step="1" value="0" oninput="updateTransform()">
+      <span class="slider-val" id="vRotate">0°</span>
+    </div>
+    <div class="slider-row">
+      <span class="slider-label">OPACITY</span>
+      <input type="range" class="slider-input" id="sOpacity" min="0.2" max="1" step="0.01" value="0.92" oninput="updateTransform()">
+      <span class="slider-val" id="vOpacity">92%</span>
+    </div>
+  </div>
+
+  <!-- CONTROLS -->
+  <div id="controls">
+    <button class="ctrl-btn" onclick="removeKitchen()">✕ Remove</button>
+    <button class="ctrl-btn primary" id="placeBtn" onclick="placeOnReticle()" disabled>📍 Place Here</button>
+    <button class="ctrl-btn" onclick="exitAR()">⬡ Exit AR</button>
+  </div>
+
+  <!-- KITCHEN PICKER -->
+  <div id="picker">
+    <div class="picker-label">KITCHEN STYLE</div>
+    <div class="picker-scroll" id="pickerScroll">
+      <!-- Populated by JS -->
+    </div>
+  </div>
+
+</div>
+
+<!-- ENTER AR BUTTON -->
+<button id="arBtn" onclick="startAR()">🥽 Enter AR</button>
+
+<!-- NOT SUPPORTED -->
+<div id="noXR">
+  <div class="noxr-icon">🥽</div>
+  <div class="noxr-title">WebXR Not Available</div>
+  <div class="noxr-sub">
+    This app requires the <strong>Meta Quest 3 browser</strong> (or another WebXR-compatible device).<br><br>
+    To use on Quest 3:
+    <ol style="text-align:left;margin-top:10px;line-height:2;padding-left:18px;">
+      <li>Host this file on <strong>GitHub Pages</strong> or <strong>Netlify</strong></li>
+      <li>Open <strong>Meta Browser</strong> on your Quest 3</li>
+      <li>Navigate to your HTTPS URL</li>
+      <li>Tap <strong>"Enter AR"</strong></li>
+    </ol>
+  </div>
+  <div class="noxr-url" id="currentUrl"></div>
+  <button class="ctrl-btn primary" style="pointer-events:all;" onclick="startDesktopPreview()">
+    Preview on Desktop Instead
+  </button>
+</div>
+
+<div id="toast"></div>
+
+<!-- THREE.JS via CDN -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+
+<script>
+// ═══════════════════════════════════════════════════════
+// KITCHEN DATA
+// ═══════════════════════════════════════════════════════
+const KITCHENS = [
+  { id:'k1', name:'Scandi',    src:'https://images.unsplash.com/photo-1556909114-f6e7ad7d3136?w=800&q=80' },
+  { id:'k2', name:'Dark Luxe', src:'https://images.unsplash.com/photo-1556909172-54557c7e4fb7?w=800&q=80' },
+  { id:'k3', name:'Farmhouse', src:'https://images.unsplash.com/photo-1565538810643-b5bdb714032a?w=800&q=80' },
+  { id:'k4', name:'Industrial',src:'https://images.unsplash.com/photo-1556911073-52527ac43761?w=800&q=80' },
+  { id:'k5', name:'Classic',   src:'https://images.unsplash.com/photo-1556909212-d5b604d0c90d?w=800&q=80' },
+];
+
+// ═══════════════════════════════════════════════════════
+// STATE
+// ═══════════════════════════════════════════════════════
+let renderer, scene, camera, xrSession = null;
+let reticle, reticleVisible = false;
+let hitTestSource = null, hitTestSourceRequested = false;
+let kitchenMesh = null;
+let currentTexture = null;
+let selectedKitchen = KITCHENS[0];
+let isARMode = false;
+let desktopMode = false;
+
+// Placement state
+let placed = false;
+
+// ═══════════════════════════════════════════════════════
+// BUILD PICKER
+// ═══════════════════════════════════════════════════════
+function buildPicker() {
+  const scroll = document.getElementById('pickerScroll');
+
+  KITCHENS.forEach(k => {
+    const card = document.createElement('div');
+    card.className = 'k-card' + (k.id === selectedKitchen.id ? ' active' : '');
+    card.id = 'kcard-' + k.id;
+    card.innerHTML = `<img src="${k.src}" alt="${k.name}" loading="lazy"><div class="k-card-name">${k.name}</div>`;
+    card.onclick = () => pickKitchen(k);
+    scroll.appendChild(card);
+  });
+
+  // Import card
+  const imp = document.createElement('div');
+  imp.className = 'k-import';
+  imp.innerHTML = `
+    <input type="file" accept="image/*" onchange="importImage(event)">
+    <div class="k-import-icon">📁</div>
+    <div>Import</div>
+  `;
+  scroll.appendChild(imp);
+}
+
+function pickKitchen(k) {
+  selectedKitchen = k;
+  document.querySelectorAll('.k-card').forEach(c => c.classList.remove('active'));
+  document.getElementById('kcard-' + k.id)?.classList.add('active');
+  loadTexture(k.src);
+  toast('Style: ' + k.name);
+}
+
+function importImage(e) {
+  const file = e.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = ev => {
+    const custom = { id: 'custom', name: file.name.replace(/\.[^.]+$/, ''), src: ev.target.result };
+    KITCHENS.unshift(custom);
+
+    const scroll = document.getElementById('pickerScroll');
+    const card = document.createElement('div');
+    card.className = 'k-card active';
+    card.id = 'kcard-custom';
+    card.innerHTML = `<img src="${custom.src}" alt="${custom.name}"><div class="k-card-name">${custom.name}</div>`;
+    card.onclick = () => pickKitchen(custom);
+    scroll.prepend(card);
+
+    document.querySelectorAll('.k-card').forEach(c => c.classList.remove('active'));
+    card.classList.add('active');
+
+    selectedKitchen = custom;
+    loadTexture(custom.src);
+    toast('Imported: ' + custom.name);
+  };
+  reader.readAsDataURL(file);
+}
+
+// ═══════════════════════════════════════════════════════
+// THREE.JS SETUP
+// ═══════════════════════════════════════════════════════
+function initThree() {
+  const canvas = document.getElementById('c');
+
+  renderer = new THREE.WebGLRenderer({
+    canvas,
+    antialias: true,
+    alpha: true,
+    logarithmicDepthBuffer: true
+  });
+  renderer.setPixelRatio(window.devicePixelRatio);
+  renderer.setSize(window.innerWidth, window.innerHeight);
+  renderer.xr.enabled = true;
+  renderer.outputEncoding = THREE.sRGBEncoding;
+
+  scene = new THREE.Scene();
+
+  camera = new THREE.PerspectiveCamera(70, window.innerWidth / window.innerHeight, 0.01, 50);
+  camera.position.set(0, 1.6, 0);
+
+  // Ambient light
+  const ambLight = new THREE.AmbientLight(0xffffff, 0.8);
+  scene.add(ambLight);
+  const dirLight = new THREE.DirectionalLight(0xffffff, 0.6);
+  dirLight.position.set(2, 4, 2);
+  scene.add(dirLight);
+
+  // RETICLE — ring shown on detected surface
+  buildReticle();
+
+  window.addEventListener('resize', onResize);
+  renderer.setAnimationLoop(xrLoop);
+}
+
+function buildReticle() {
+  const geo = new THREE.RingGeometry(0.12, 0.15, 32).rotateX(-Math.PI / 2);
+  const mat = new THREE.MeshBasicMaterial({
+    color: 0x00e5ff,
+    side: THREE.DoubleSide,
+    transparent: true,
+    opacity: 0.85
+  });
+  reticle = new THREE.Mesh(geo, mat);
+  reticle.matrixAutoUpdate = false;
+  reticle.visible = false;
+  scene.add(reticle);
+
+  // Inner dot
+  const dotGeo = new THREE.CircleGeometry(0.03, 24).rotateX(-Math.PI / 2);
+  const dotMat = new THREE.MeshBasicMaterial({ color: 0x00e5ff, transparent: true, opacity: 0.6 });
+  const dot = new THREE.Mesh(dotGeo, dotMat);
+  reticle.add(dot);
+}
+
+function loadTexture(src) {
+  const loader = new THREE.TextureLoader();
+  loader.crossOrigin = 'anonymous';
+  loader.load(src, tex => {
+    tex.encoding = THREE.sRGBEncoding;
+    currentTexture = tex;
+    if (kitchenMesh) {
+      kitchenMesh.material.map = tex;
+      kitchenMesh.material.needsUpdate = true;
+    }
+  }, undefined, () => {
+    console.warn('Texture load failed, using fallback colour');
+    currentTexture = null;
+  });
+}
+
+function buildKitchenPlane(position, quaternion) {
+  if (kitchenMesh) {
+    scene.remove(kitchenMesh);
+    kitchenMesh.geometry.dispose();
+    kitchenMesh.material.dispose();
+    kitchenMesh = null;
+  }
+
+  const w = parseFloat(document.getElementById('sWidth').value);
+  const h = parseFloat(document.getElementById('sHeight').value);
+
+  const geo = new THREE.PlaneGeometry(w, h);
+  const mat = new THREE.MeshStandardMaterial({
+    map: currentTexture || null,
+    color: currentTexture ? 0xffffff : 0x667788,
+    transparent: true,
+    opacity: parseFloat(document.getElementById('sOpacity').value),
+    side: THREE.DoubleSide,
+    roughness: 0.6,
+    metalness: 0.0,
+  });
+
+  kitchenMesh = new THREE.Mesh(geo, mat);
+  kitchenMesh.position.copy(position);
+  // Stand upright from floor — offset up by half height
+  kitchenMesh.position.y += h / 2;
+
+  const rot = parseFloat(document.getElementById('sRotate').value) * (Math.PI / 180);
+  kitchenMesh.rotation.y = rot;
+
+  // Add wireframe outline
+  const edges = new THREE.EdgesGeometry(geo);
+  const lineMat = new THREE.LineBasicMaterial({ color: 0x00e5ff, transparent: true, opacity: 0.4 });
+  const wireframe = new THREE.LineSegments(edges, lineMat);
+  kitchenMesh.add(wireframe);
+
+  scene.add(kitchenMesh);
+  placed = true;
+
+  document.getElementById('instructions').style.opacity = '0';
+  document.getElementById('transformControls').classList.add('visible');
+  document.getElementById('reticleLabel').style.opacity = '0';
+  toast('Kitchen placed! Use sliders to resize.');
+}
+
+function updateTransform() {
+  const w = parseFloat(document.getElementById('sWidth').value);
+  const h = parseFloat(document.getElementById('sHeight').value);
+  const rot = parseFloat(document.getElementById('sRotate').value) * Math.PI / 180;
+  const op = parseFloat(document.getElementById('sOpacity').value);
+
+  document.getElementById('vWidth').textContent = w.toFixed(1) + 'm';
+  document.getElementById('vHeight').textContent = h.toFixed(1) + 'm';
+  document.getElementById('vRotate').textContent = document.getElementById('sRotate').value + '°';
+  document.getElementById('vOpacity').textContent = Math.round(op * 100) + '%';
+
+  if (!kitchenMesh) return;
+
+  // Rebuild geometry for new size
+  kitchenMesh.geometry.dispose();
+  kitchenMesh.geometry = new THREE.PlaneGeometry(w, h);
+  kitchenMesh.material.opacity = op;
+  kitchenMesh.rotation.y = rot;
+  // Re-centre height
+  const base = kitchenMesh.position.clone();
+  base.y = reticle.visible ? reticle.matrix.elements[13] + h / 2 : kitchenMesh.position.y;
+}
+
+function removeKitchen() {
+  if (kitchenMesh) {
+    scene.remove(kitchenMesh);
+    kitchenMesh.geometry.dispose();
+    kitchenMesh.material.dispose();
+    kitchenMesh = null;
+  }
+  placed = false;
+  document.getElementById('instructions').style.opacity = '1';
+  document.getElementById('transformControls').classList.remove('visible');
+  toast('Kitchen removed');
+}
+
+function placeOnReticle() {
+  if (!reticle.visible) { toast('No surface detected yet'); return; }
+  const pos = new THREE.Vector3();
+  const quat = new THREE.Quaternion();
+  pos.setFromMatrixPosition(reticle.matrix);
+  quat.setFromRotationMatrix(reticle.matrix);
+  buildKitchenPlane(pos, quat);
+}
+
+// ═══════════════════════════════════════════════════════
+// XR LOOP
+// ═══════════════════════════════════════════════════════
+function xrLoop(timestamp, frame) {
+  if (!frame) {
+    // Non-XR render (desktop preview)
+    renderer.render(scene, camera);
+    return;
+  }
+
+  const session = renderer.xr.getSession();
+  const referenceSpace = renderer.xr.getReferenceSpace();
+
+  // Hit test setup
+  if (!hitTestSourceRequested) {
+    session.requestReferenceSpace('viewer').then(viewerSpace => {
+      session.requestHitTestSource({ space: viewerSpace }).then(source => {
+        hitTestSource = source;
+      });
+    });
+    hitTestSourceRequested = true;
+    session.addEventListener('end', () => {
+      hitTestSourceRequested = false;
+      hitTestSource = null;
+    });
+  }
+
+  // Process hit tests
+  if (hitTestSource) {
+    const results = frame.getHitTestResults(hitTestSource);
+    if (results.length > 0) {
+      const hit = results[0];
+      const pose = hit.getPose(referenceSpace);
+      reticle.visible = true;
+      reticle.matrix.fromArray(pose.transform.matrix);
+      reticleVisible = true;
+      document.getElementById('placeBtn').disabled = false;
+      document.getElementById('reticleLabel').style.opacity = '1';
+    } else {
+      reticle.visible = false;
+      reticleVisible = false;
+      if (!placed) document.getElementById('placeBtn').disabled = true;
+    }
+  }
+
+  renderer.render(scene, camera);
+}
+
+// ═══════════════════════════════════════════════════════
+// START / STOP AR
+// ═══════════════════════════════════════════════════════
+async function startAR() {
+  if (!navigator.xr) {
+    showNoXR(); return;
+  }
+
+  const supported = await navigator.xr.isSessionSupported('immersive-ar').catch(() => false);
+  if (!supported) { showNoXR(); return; }
+
+  try {
+    xrSession = await navigator.xr.requestSession('immersive-ar', {
+      requiredFeatures: ['hit-test'],
+      optionalFeatures: ['dom-overlay', 'light-estimation'],
+      domOverlay: { root: document.getElementById('ui') }
+    });
+
+    renderer.xr.setSession(xrSession);
+    xrSession.addEventListener('end', onSessionEnd);
+
+    isARMode = true;
+    document.getElementById('arBtn').classList.add('hidden');
+    document.getElementById('ui').style.display = 'flex';
+    document.getElementById('statusDot').className = 'status-dot live';
+    document.getElementById('statusText').textContent = 'AR LIVE';
+
+    // Load initial texture
+    loadTexture(selectedKitchen.src);
+
+    toast('AR started — move headset to detect surfaces');
+  } catch (e) {
+    console.error('XR session error:', e);
+    toast('⚠ Could not start AR session');
+  }
+}
+
+function onSessionEnd() {
+  xrSession = null;
+  isARMode = false;
+  hitTestSource = null;
+  hitTestSourceRequested = false;
+  document.getElementById('arBtn').classList.remove('hidden');
+  document.getElementById('ui').style.display = 'none';
+}
+
+function exitAR() {
+  if (xrSession) xrSession.end();
+}
+
+// ═══════════════════════════════════════════════════════
+// DESKTOP FALLBACK PREVIEW
+// ═══════════════════════════════════════════════════════
+function startDesktopPreview() {
+  document.getElementById('noXR').classList.remove('show');
+  document.getElementById('arBtn').classList.add('hidden');
+  document.getElementById('ui').style.display = 'flex';
+  document.getElementById('crosshair').style.display = 'block';
+  document.getElementById('statusDot').className = 'status-dot';
+  document.getElementById('statusText').textContent = 'DESKTOP PREVIEW';
+  document.getElementById('instructions').innerHTML = `
+    <div class="inst-icon">🖥</div>
+    <div class="inst-title">Desktop Preview Mode</div>
+    <div class="inst-sub">Click "Place Here" to position kitchen<br>on a virtual floor plane</div>
+  `;
+  desktopMode = true;
+
+  // Position a floor plane reticle at fixed position
+  reticle.visible = true;
+  reticle.position.set(0, 0, -2);
+  reticle.rotation.x = 0;
+  document.getElementById('placeBtn').disabled = false;
+  document.getElementById('reticleLabel').style.opacity = '1';
+
+  // Override placeOnReticle for desktop
+  loadTexture(selectedKitchen.src);
+
+  scene.background = new THREE.Color(0x141820);
+
+  // Add a floor
+  const floorGeo = new THREE.PlaneGeometry(10, 10).rotateX(-Math.PI / 2);
+  const floorMat = new THREE.MeshStandardMaterial({
+    color: 0x1a2030,
+    roughness: 1,
+    metalness: 0,
+    transparent: true, opacity: 0.7
+  });
+  scene.add(new THREE.Mesh(floorGeo, floorMat));
+
+  // Grid helper
+  const grid = new THREE.GridHelper(10, 20, 0x00e5ff, 0x00e5ff);
+  grid.material.opacity = 0.07;
+  grid.material.transparent = true;
+  scene.add(grid);
+
+  // Move camera back
+  camera.position.set(0, 1.6, 2.5);
+  camera.lookAt(0, 1, -2);
+
+  // Mouse orbit
+  enableDesktopOrbit();
+
+  toast('Desktop preview — click Place Here to position');
+}
+
+function enableDesktopOrbit() {
+  let isDragging = false, lastX = 0, lastY = 0;
+  const c = document.getElementById('c');
+
+  c.addEventListener('mousedown', e => { isDragging = true; lastX = e.clientX; lastY = e.clientY; });
+  c.addEventListener('mouseup', () => isDragging = false);
+  c.addEventListener('mousemove', e => {
+    if (!isDragging) return;
+    const dx = e.clientX - lastX;
+    const dy = e.clientY - lastY;
+    lastX = e.clientX; lastY = e.clientY;
+    // Orbit camera
+    const spherical = new THREE.Spherical().setFromVector3(camera.position);
+    spherical.theta -= dx * 0.01;
+    spherical.phi   += dy * 0.01;
+    spherical.phi = Math.max(0.1, Math.min(Math.PI / 2, spherical.phi));
+    camera.position.setFromSpherical(spherical);
+    camera.lookAt(0, 1, -2);
+  });
+}
+
+// Override placeOnReticle for desktop
+const _origPlace = window.placeOnReticle;
+window.placeOnReticle = function() {
+  if (desktopMode) {
+    buildKitchenPlane(new THREE.Vector3(0, 0, -2), new THREE.Quaternion());
+  } else {
+    if (!reticle.visible) { toast('No surface detected yet'); return; }
+    const pos = new THREE.Vector3();
+    pos.setFromMatrixPosition(reticle.matrix);
+    buildKitchenPlane(pos, new THREE.Quaternion());
+  }
+};
+
+// ═══════════════════════════════════════════════════════
+// HELPERS
+// ═══════════════════════════════════════════════════════
+function showNoXR() {
+  document.getElementById('noXR').classList.add('show');
+  document.getElementById('arBtn').classList.add('hidden');
+  document.getElementById('currentUrl').textContent = window.location.href;
+}
+
+function onResize() {
+  camera.aspect = window.innerWidth / window.innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(window.innerWidth, window.innerHeight);
+}
+
+function toast(msg) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  clearTimeout(t._timer);
+  t._timer = setTimeout(() => t.classList.remove('show'), 2800);
+}
+
+// ═══════════════════════════════════════════════════════
+// INIT
+// ═══════════════════════════════════════════════════════
+window.addEventListener('DOMContentLoaded', () => {
+  initThree();
+  buildPicker();
+  loadTexture(selectedKitchen.src);
+
+  // Check WebXR availability
+  if (navigator.xr) {
+    navigator.xr.isSessionSupported('immersive-ar').then(supported => {
+      if (!supported) {
+        document.getElementById('arBtn').textContent = '🖥 Preview (No AR Device)';
+      }
+    });
+  } else {
+    document.getElementById('arBtn').textContent = '🖥 Desktop Preview';
+    document.getElementById('arBtn').onclick = () => {
+      document.getElementById('noXR').classList.add('show');
+      document.getElementById('arBtn').classList.add('hidden');
+      document.getElementById('currentUrl').textContent = window.location.href;
+    };
+  }
+
+  // Dismiss load screen
+  setTimeout(() => {
+    document.getElementById('loadScreen').classList.add('fade');
+    setTimeout(() => document.getElementById('loadScreen').style.display = 'none', 500);
+  }, 1400);
+});
+</script>
+</body>
+</html>
