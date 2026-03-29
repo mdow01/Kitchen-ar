@@ -235,6 +235,76 @@
   .k-import input { position: absolute; inset: 0; opacity: 0; cursor: pointer; }
   .k-import-icon { font-size: 1.5rem; }
 
+  /* ── URL PASTE BAR ── */
+  #urlBar {
+    pointer-events: all;
+    display: flex;
+    gap: 8px;
+    align-items: center;
+    padding: 0 16px 10px;
+  }
+
+  #urlBar .url-label {
+    font-family: 'DM Mono', monospace;
+    font-size: 0.6rem;
+    color: var(--accent);
+    letter-spacing: 1px;
+    white-space: nowrap;
+  }
+
+  #urlInput {
+    flex: 1;
+    background: rgba(255,255,255,0.05);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    color: var(--text);
+    font-family: 'DM Mono', monospace;
+    font-size: 0.7rem;
+    padding: 8px 12px;
+    outline: none;
+    transition: border-color 0.2s;
+    min-width: 0;
+  }
+
+  #urlInput::placeholder { color: var(--muted); }
+  #urlInput:focus { border-color: var(--accent); }
+
+  #urlLoadBtn {
+    flex-shrink: 0;
+    padding: 8px 14px;
+    background: var(--accent);
+    color: #000;
+    border: none;
+    border-radius: 8px;
+    font-family: 'Syne', sans-serif;
+    font-size: 0.72rem;
+    font-weight: 700;
+    cursor: pointer;
+    transition: background 0.2s;
+    white-space: nowrap;
+  }
+
+  #urlLoadBtn:hover { background: #00c8e0; }
+  #urlLoadBtn:active { background: #009eb0; }
+
+  /* URL tip panel */
+  #urlTip {
+    pointer-events: all;
+    margin: 0 16px 8px;
+    background: rgba(0,229,255,0.04);
+    border: 1px solid rgba(0,229,255,0.12);
+    border-radius: 8px;
+    padding: 8px 12px;
+    font-family: 'DM Mono', monospace;
+    font-size: 0.62rem;
+    color: var(--muted);
+    line-height: 1.6;
+    display: none;
+  }
+
+  #urlTip.show { display: block; }
+  #urlTip strong { color: var(--accent); }
+
   /* ── CONTROLS BAR ── */
   #controls {
     pointer-events: all;
@@ -494,6 +564,17 @@
     <button class="ctrl-btn" onclick="exitAR()">⬡ Exit AR</button>
   </div>
 
+  <!-- URL PASTE BAR -->
+  <div id="urlTip">
+    <strong>TIP:</strong> Find a kitchen on Google Images, Houzz or IKEA →
+    long-press image → "Copy image address" → paste below
+  </div>
+  <div id="urlBar">
+    <span class="url-label">URL</span>
+    <input type="url" id="urlInput" placeholder="Paste image URL here…" oninput="checkUrl()" onkeydown="if(event.key==='Enter')loadFromUrl()">
+    <button id="urlLoadBtn" onclick="loadFromUrl()">Load →</button>
+  </div>
+
   <!-- KITCHEN PICKER -->
   <div id="picker">
     <div class="picker-label">KITCHEN STYLE</div>
@@ -591,6 +672,95 @@ function pickKitchen(k) {
   document.getElementById('kcard-' + k.id)?.classList.add('active');
   loadTexture(k.src);
   toast('Style: ' + k.name);
+}
+
+// ═══════════════════════════════════════════════════════
+// URL PASTE LOADER
+// ═══════════════════════════════════════════════════════
+function checkUrl() {
+  const val = document.getElementById('urlInput').value.trim();
+  const tip = document.getElementById('urlTip');
+  if (val.length > 0 && !val.startsWith('http')) {
+    tip.innerHTML = '<strong>⚠</strong> URL must start with https://';
+    tip.classList.add('show');
+  } else {
+    tip.classList.remove('show');
+  }
+}
+
+function loadFromUrl() {
+  const raw = document.getElementById('urlInput').value.trim();
+  if (!raw) { toast('⚠ Paste an image URL first'); return; }
+
+  if (!raw.startsWith('http')) { toast('⚠ URL must start with https://'); return; }
+
+  // Try direct load first; if it fails due to CORS, use a proxy
+  const tip = document.getElementById('urlTip');
+  tip.innerHTML = '⏳ Loading image…';
+  tip.classList.add('show');
+
+  // Attempt direct load via THREE TextureLoader
+  // If CORS blocks it, fall back to allorigins proxy
+  const tryLoad = (src, isFallback) => {
+    const loader = new THREE.TextureLoader();
+    loader.crossOrigin = 'anonymous';
+    loader.load(
+      src,
+      tex => {
+        tex.encoding = THREE.sRGBEncoding;
+        currentTexture = tex;
+
+        const name = raw.split('/').pop().split('?')[0].replace(/\.[^.]+$/, '') || 'Custom URL';
+        const custom = { id: 'url-' + Date.now(), name, src };
+
+        // Add to picker
+        const scroll = document.getElementById('pickerScroll');
+        const card = document.createElement('div');
+        card.className = 'k-card active';
+        card.id = 'kcard-' + custom.id;
+
+        // Create thumbnail using canvas to avoid CORS issues in img tag
+        const thumb = document.createElement('div');
+        thumb.style.cssText = 'width:100%;height:70px;background:linear-gradient(135deg,#1a2030,#0d1520);display:flex;align-items:center;justify-content:center;font-size:1.5rem;';
+        thumb.textContent = '🖼';
+
+        card.appendChild(thumb);
+        const nameDiv = document.createElement('div');
+        nameDiv.className = 'k-card-name';
+        nameDiv.textContent = name.slice(0, 12) || 'Custom';
+        card.appendChild(nameDiv);
+        card.onclick = () => pickKitchen(custom);
+        scroll.prepend(card);
+
+        document.querySelectorAll('.k-card').forEach(c => c.classList.remove('active'));
+        card.classList.add('active');
+        selectedKitchen = custom;
+
+        if (kitchenMesh) {
+          kitchenMesh.material.map = tex;
+          kitchenMesh.material.needsUpdate = true;
+        }
+
+        tip.classList.remove('show');
+        document.getElementById('urlInput').value = '';
+        toast('✓ Image loaded from URL!');
+      },
+      undefined,
+      err => {
+        if (!isFallback) {
+          // Try CORS proxy
+          const proxy = 'https://api.allorigins.win/raw?url=' + encodeURIComponent(raw);
+          tryLoad(proxy, true);
+        } else {
+          tip.innerHTML = '<strong>⚠</strong> Could not load image. Try a direct image URL ending in .jpg or .png';
+          tip.classList.add('show');
+          toast('⚠ Image load failed — see tip below');
+        }
+      }
+    );
+  };
+
+  tryLoad(raw, false);
 }
 
 function importImage(e) {
